@@ -7,14 +7,14 @@ A lightweight macOS menu bar app that monitors your Buildkite builds and surface
 Buildkite Notifier sits in the macOS menu bar and keeps you informed about your personal Buildkite activity. It shows your focused build, other active builds, and recently completed focused builds. You can quickly open builds in Buildkite, switch focus, and manage your list — all from a compact SwiftUI popover.
 
 - Platform: macOS (menu bar app)
-- Minimum macOS: 14+ (adjust if needed)
+- Minimum macOS: 14+
 - Xcode: 26.0+
 - Swift: 6+
 - Technologies: SwiftUI, AppKit (NSStatusBar, NSPopover), Combine, Swift Concurrency (async/await), Keychain, UserDefaults
 
 ## Features
 
-- Menu bar status with live build state (emoji/text) and active build count badge
+- Menu bar status with live build state and active build count badge
 - Focus a specific build to track prominently
 - View other active builds and previously focused completed builds
 - Real-time duration timers for running builds and steps
@@ -54,6 +54,3 @@ Note: Some folders/files may be named slightly differently in your repo; adjust 
 - Xcode 26.0.1 or later
 - macOS 14+ SDK
 - A Buildkite account and API access token
-
-### Clone
-
