@@ -79,4 +79,37 @@ struct Build: Codable, Identifiable, Equatable {
             return "\(seconds)s"
         }
     }
+
+    // MARK: - Grouped Steps
+
+    /// Steps grouped by emoji prefix, maintaining order based on first step appearance
+    var groupedSteps: [BuildStepGroup] {
+        guard let steps = steps, !steps.isEmpty else { return [] }
+
+        // Sort steps by order first
+        let sortedSteps = steps.sorted { $0.order < $1.order }
+
+        // Group by emoji prefix while preserving order of first appearance
+        var groupDict: [String: [BuildStep]] = [:]
+        var groupOrder: [String] = []
+
+        for step in sortedSteps {
+            let key = step.groupKey
+            if groupDict[key] == nil {
+                groupDict[key] = []
+                groupOrder.append(key)
+            }
+            groupDict[key]?.append(step)
+        }
+
+        // Build groups in order of first appearance
+        return groupOrder.compactMap { key -> BuildStepGroup? in
+            guard let groupSteps = groupDict[key] else { return nil }
+            return BuildStepGroup(
+                id: key,
+                emojiPrefix: key == "Other" ? nil : key,
+                steps: groupSteps
+            )
+        }
+    }
 }
