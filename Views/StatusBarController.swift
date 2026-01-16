@@ -10,7 +10,7 @@ import SwiftUI
 import Combine
 
 @MainActor
-class StatusBarController: ObservableObject {
+class StatusBarController: NSObject, ObservableObject {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var buildMonitor: BuildMonitor
@@ -18,6 +18,7 @@ class StatusBarController: ObservableObject {
 
     init(buildMonitor: BuildMonitor) {
         self.buildMonitor = buildMonitor
+        super.init()
         setupStatusItem()
         setupPopover()
         observeBuildMonitor()
@@ -37,16 +38,33 @@ class StatusBarController: ObservableObject {
         popover = NSPopover()
         popover.contentSize = NSSize(width: 360, height: 500)
         popover.behavior = .transient
+        popover.delegate = self
         popover.contentViewController = NSHostingController(rootView: MenuView(buildMonitor: buildMonitor))
     }
 
     private func observeBuildMonitor() {
-        // Combine both publishers to update status bar with build and count
-        Publishers.CombineLatest(buildMonitor.$focusedBuild, buildMonitor.$activeBuilds)
-            .sink { [weak self] build, activeBuilds in
-                self?.updateStatusBar(for: build, activeCount: activeBuilds.count)
+        // Combine publishers to update status bar and popover
+        Publishers.CombineLatest3(
+            buildMonitor.$focusedBuild,
+            buildMonitor.$activeBuilds,
+            buildMonitor.$previouslyFocusedBuilds
+        )
+        .debounce(for: .milliseconds(50), scheduler: RunLoop.main)
+        .sink { [weak self] build, activeBuilds, _ in
+            guard let self = self else { return }
+            if self.popover.isShown {
+                // Only refresh popover, defer status bar update to prevent shifting
+                self.refreshPopoverIfNeeded()
+            } else {
+                self.updateStatusBar(for: build, activeCount: activeBuilds.count)
             }
-            .store(in: &cancellables)
+        }
+        .store(in: &cancellables)
+    }
+
+    private func refreshPopoverIfNeeded() {
+        guard popover.isShown else { return }
+        popover.contentViewController = NSHostingController(rootView: MenuView(buildMonitor: buildMonitor))
     }
 
     private func updateStatusBar(for build: Build?, activeCount: Int) {
@@ -117,13 +135,25 @@ class StatusBarController: ObservableObject {
     @objc private func togglePopover() {
         if popover.isShown {
             popover.performClose(nil)
+            // Status bar update handled by popoverDidClose delegate
         } else {
             if let button = statusItem.button {
+                // Recreate content to ensure fresh SwiftUI state
+                popover.contentViewController = NSHostingController(rootView: MenuView(buildMonitor: buildMonitor))
                 popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-                // Ensure popover dismisses when clicking outside
+                // Ensure popover becomes key window so buttons respond to first click
                 NSApp.activate(ignoringOtherApps: true)
+                popover.contentViewController?.view.window?.makeKey()
             }
         }
+    }
+}
+
+// MARK: - NSPopoverDelegate
+extension StatusBarController: NSPopoverDelegate {
+    func popoverDidClose(_ notification: Notification) {
+        // Update status bar when popover closes (handles both manual close and transient auto-close)
+        updateStatusBar(for: buildMonitor.focusedBuild, activeCount: buildMonitor.activeBuilds.count)
     }
 }
 
