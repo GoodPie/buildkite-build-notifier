@@ -255,14 +255,7 @@ struct BuildDetailView: View {
                 Divider()
                     .padding(.vertical, 4)
 
-                Text("Build Steps")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .fontWeight(.semibold)
-
-                ForEach(steps.sorted(by: { $0.order < $1.order })) { step in
-                    BuildStepRowView(step: step)
-                }
+                BuildStepsSection(build: build)
             }
         }
         .onAppear {
@@ -403,6 +396,7 @@ struct BuildRowView: View {
 
 struct BuildStepRowView: View {
     let step: BuildStep
+    var indented: Bool = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
@@ -410,7 +404,7 @@ struct BuildStepRowView: View {
                 .foregroundColor(Color.from(step.iconColor))
                 .frame(width: 16)
 
-            Text(step.name)
+            Text(step.displayName)
                 .font(.caption)
                 .foregroundColor(step.isRunning ? .primary : .secondary)
                 .fontWeight(step.isRunning ? .semibold : .regular)
@@ -424,9 +418,132 @@ struct BuildStepRowView: View {
             }
         }
         .padding(.vertical, 2)
-        .padding(.horizontal, 4)
+        .padding(.leading, indented ? 24 : 4)
+        .padding(.trailing, 4)
         .background(step.isRunning ? Color.yellow.opacity(0.1) : Color.clear)
         .cornerRadius(4)
+    }
+}
+
+// MARK: - Collapsible Build Steps
+
+struct BuildStepGroupHeaderView: View {
+    let group: BuildStepGroup
+    let isExpanded: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            HStack(spacing: 8) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .frame(width: 10)
+
+                Image(systemName: group.aggregateIcon)
+                    .foregroundColor(Color.from(group.aggregateColor))
+                    .frame(width: 16)
+
+                Text(group.displayTitle)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Text("\(group.stepCount)")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.15))
+                    .cornerRadius(8)
+
+                if !isExpanded {
+                    Text(group.summaryText)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 4)
+        .background(group.hasRunningStep ? Color.yellow.opacity(0.1) : Color.clear)
+        .cornerRadius(4)
+        .pointerStyle(.link)
+    }
+}
+
+struct CollapsibleBuildStepGroupView: View {
+    let group: BuildStepGroup
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            BuildStepGroupHeaderView(
+                group: group,
+                isExpanded: isExpanded,
+                onToggle: { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }
+            )
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(group.steps.sorted { $0.order < $1.order }) { step in
+                        BuildStepRowView(step: step, indented: true)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+}
+
+struct BuildStepsSection: View {
+    let build: Build
+    @State private var expandedGroups: Set<String> = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Build Steps")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fontWeight(.semibold)
+
+                Spacer()
+
+                Button(expandedGroups.isEmpty ? "Expand All" : "Collapse All") {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        if expandedGroups.isEmpty {
+                            expandedGroups = Set(build.groupedSteps.map { $0.id })
+                        } else {
+                            expandedGroups.removeAll()
+                        }
+                    }
+                }
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .buttonStyle(.plain)
+            }
+
+            ForEach(build.groupedSteps) { group in
+                CollapsibleBuildStepGroupView(
+                    group: group,
+                    isExpanded: Binding(
+                        get: { expandedGroups.contains(group.id) },
+                        set: { isExpanded in
+                            if isExpanded {
+                                expandedGroups.insert(group.id)
+                            } else {
+                                expandedGroups.remove(group.id)
+                            }
+                        }
+                    )
+                )
+            }
+        }
     }
 }
 
