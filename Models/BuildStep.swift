@@ -54,4 +54,34 @@ struct BuildStep: Codable, Identifiable, Equatable {
             return "gray"
         }
     }
+
+    // MARK: - Emoji Prefix Parsing
+
+    /// The emoji prefix code extracted from the step name (e.g., "docker" from ":docker: Build")
+    var emojiPrefix: String? {
+        let pattern = #"^:([a-zA-Z0-9_+-]+):\s*"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)),
+              let prefixRange = Range(match.range(at: 1), in: name) else {
+            return nil
+        }
+        return String(name[prefixRange])
+    }
+
+    /// The step name with emoji prefix stripped (e.g., "Build image" from ":docker: Build image")
+    var displayName: String {
+        let pattern = #"^:([a-zA-Z0-9_+-]+):\s*"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)),
+              let fullMatchRange = Range(match.range, in: name) else {
+            return name
+        }
+        let stripped = String(name[fullMatchRange.upperBound...])
+        return stripped.isEmpty ? "(Unnamed step)" : stripped
+    }
+
+    /// Group key for sorting - returns emoji prefix or "Other" for ungrouped steps
+    var groupKey: String {
+        emojiPrefix ?? "Other"
+    }
 }
