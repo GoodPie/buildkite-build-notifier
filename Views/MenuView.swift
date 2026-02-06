@@ -472,7 +472,6 @@ struct BuildStepGroupHeaderView: View {
         .padding(.horizontal, 4)
         .background(group.hasRunningStep ? Color.yellow.opacity(0.1) : Color.clear)
         .cornerRadius(4)
-        .pointerStyle(.link)
     }
 }
 
