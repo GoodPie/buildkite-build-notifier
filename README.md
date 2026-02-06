@@ -1,3 +1,5 @@
+[![Xcode - Build and Analyze](https://github.com/GoodPie/buildkite-build-notifier/actions/workflows/objective-c-xcode.yml/badge.svg?branch=main)](https://github.com/GoodPie/buildkite-build-notifier/actions/workflows/objective-c-xcode.yml)
+
 # Buildkite Notifier (macOS)
 
 A lightweight macOS menu bar app that monitors your Buildkite builds and surfaces status at a glance with a popover UI.
