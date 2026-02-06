@@ -4,7 +4,16 @@ A lightweight macOS menu bar app that monitors your Buildkite builds and surface
 
 This was a one-day project to explore Buildkite so there's a lot of work left.
 
-## Running
+## Installation
+
+### Homebrew
+
+```
+brew tap GoodPie/tap
+brew install --cask buildkite-notifier
+```
+
+### Building
 
 1. Clone the repository:
 
@@ -13,13 +22,21 @@ https://github.com/GoodPie/buildkite-build-notifier.git
 ```
 
 2. Open the project in xcode
-3. Run and build the project. 
-4. The app will open in the menu bar and have the status `idle`
-5. Click the menu bar icon and select "Settings"
-6. Enter your API key
-7. Enter the name of your organisation
-8. Test the connection 
-9. Click Save
+3. Run and build the project.
+
+### Troubleshooting
+
+- This app is not signed. You'll get a notification that Mac couldn't verify this app
+  - Don't click "Move to trash" on the dialog. Click "Done" --> Go to System Settings --> Privacy and Security --> Scroll down --> "Open App Anyway"
+
+## Running 
+
+1. The app will open in the menu bar and have the status `idle`
+2. Click the menu bar icon and select "Settings"
+3. Enter your API key
+4. Enter the name of your organisation
+5. Test the connection 
+6. Click Save
 
 Now when a pipeline is running that you have been assigned to, you'll get a notification and see the status update in the menu bar.
 
@@ -30,6 +47,12 @@ Now when a pipeline is running that you have been assigned to, you'll get a noti
 3. Select all `READ` permissions checked (will refine this down later)
 4. Select the organisation access you wish to grant
 5. Click "Create New API Access Token"
+
+### Verify Notification Settings
+
+1. Open System Settings
+2. Find "Build Kite Notifier"
+3. Check notifications are enabled
 
 ## Overview
 
