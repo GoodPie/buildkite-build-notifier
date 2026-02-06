@@ -52,6 +52,7 @@ class KeychainHelper {
         return value
     }
 
+    @discardableResult
     func delete(key: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
