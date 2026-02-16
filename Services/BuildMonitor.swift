@@ -10,10 +10,7 @@ import Combine
 
 @MainActor
 class BuildMonitor: ObservableObject {
-    @Published var focusedBuild: Build?
-    @Published var activeBuilds: [Build] = []
-    @Published var completedBuilds: [Build] = []
-    @Published var previouslyFocusedBuilds: [Build] = []  // New: builds that were focused and completed
+    @Published var trackedBuilds: [Build] = []
     @Published var errorState: String?
     @Published var isPolling: Bool = false
     @Published var lastUpdateTime: Date?
@@ -24,11 +21,10 @@ class BuildMonitor: ObservableObject {
     private var pollingTimer: Timer?
     private var userId: String?
     private var orgSlug: String?
-    private var focusHistory: Set<String> = []  // Track which build IDs have been focused
     private var manuallyAddedBuildRefs: [(org: String, pipeline: String, number: Int)] = []  // Track manually added builds for polling
 
     var badgeCount: Int {
-        activeBuilds.count
+        trackedBuilds.filter { $0.isActive }.count
     }
 
     /// Configure the API connection with authentication token and organization
@@ -122,79 +118,88 @@ class BuildMonitor: ObservableObject {
         return manualBuilds
     }
 
+    // MARK: - Sort Helper
+
+    private func sortBuilds(_ builds: [Build]) -> [Build] {
+        builds.sorted { a, b in
+            let orderA = a.state.sortOrder
+            let orderB = b.state.sortOrder
+            if orderA != orderB { return orderA < orderB }
+            let dateA = a.startedAt ?? a.createdAt
+            let dateB = b.startedAt ?? b.createdAt
+            return dateA > dateB
+        }
+    }
+
+    // MARK: - Build State Updates
+
     /// Update build state from API response
-    /// State flow:
-    /// 1. Detect state changes and trigger notifications
-    /// 2. Update activeBuilds and completedBuilds arrays
-    /// 3. Auto-focus first active build if no focus exists
-    /// 4. Update focused build data if it's in the new builds
-    /// 5. Restore focused build from UserDefaults if needed
+    /// - Merges new builds into tracked builds (update existing, add new)
+    /// - Detects state changes and notifies on completion
+    /// - Re-sorts the list and caps completed builds at 20
     private func updateBuilds(newBuilds: [Build]) {
-        // Separate active and completed
-        let active = newBuilds.filter { $0.isActive }
-        let completed = newBuilds.filter { $0.isCompleted }
+        var updatedBuilds = trackedBuilds
 
-        // Detect state changes for notifications
-        for newBuild in newBuilds {
-            if let oldBuild = (activeBuilds + completedBuilds).first(where: { $0.id == newBuild.id }),
-               oldBuild.state != newBuild.state {
-                notificationService.sendNotification(
-                    for: newBuild,
-                    oldState: oldBuild.state,
-                    isFocused: newBuild.id == focusedBuild?.id
-                )
-
-                // If focused build just completed, move to previously focused
-                if newBuild.id == focusedBuild?.id && newBuild.isCompleted {
-                    if !previouslyFocusedBuilds.contains(where: { $0.id == newBuild.id }) {
-                        previouslyFocusedBuilds.insert(newBuild, at: 0)
-                    }
+        for var newBuild in newBuilds {
+            if let existingIndex = updatedBuilds.firstIndex(where: { $0.id == newBuild.id }) {
+                let existing = updatedBuilds[existingIndex]
+                if existing.addedManually { newBuild.addedManually = true }
+                if existing.state != newBuild.state {
+                    notificationService.sendNotification(for: newBuild, oldState: existing.state)
                 }
+                updatedBuilds[existingIndex] = newBuild
+            } else {
+                updatedBuilds.append(newBuild)
             }
         }
 
-        // Update active builds
-        activeBuilds = active
+        let active = updatedBuilds.filter { $0.isActive }
+        let completed = updatedBuilds.filter { $0.isCompleted }
+        let cappedCompleted = Array(completed.prefix(20))
 
-        // Only show completed builds that were never focused in "Recently Completed"
-        // Limit to 50 most recent to prevent memory bloat
-        var filteredCompleted = completed.filter { !focusHistory.contains($0.id) }
-        if filteredCompleted.count > 50 {
-            filteredCompleted = Array(filteredCompleted.prefix(50))
-        }
-        completedBuilds = filteredCompleted
-
-        // Update previously focused builds with latest data
-        for (index, prevBuild) in previouslyFocusedBuilds.enumerated() {
-            if let updated = completed.first(where: { $0.id == prevBuild.id }) {
-                previouslyFocusedBuilds[index] = updated
-            }
-        }
-
-        // Auto-focus if no focused build
-        if focusedBuild == nil, let firstActive = active.first {
-            focusedBuild = firstActive
-            focusHistory.insert(firstActive.id)
-            UserDefaults.standard.set(firstActive.id, forKey: "focusedBuildId")
-        }
-
-        // Update focused build if it's in new builds
-        if let focused = focusedBuild,
-           let updated = newBuilds.first(where: { $0.id == focused.id }) {
-            focusedBuild = updated
-        }
-
-        // Restore focused build from UserDefaults if needed
-        if focusedBuild == nil,
-           let savedId = UserDefaults.standard.string(forKey: "focusedBuildId"),
-           let saved = newBuilds.first(where: { $0.id == savedId }) {
-            focusedBuild = saved
-            focusHistory.insert(saved.id)
-        }
-
-        // Mark that we've completed at least one fetch
+        trackedBuilds = sortBuilds(active + cappedCompleted)
         hasCompletedFirstFetch = true
     }
+
+    // MARK: - Build Management
+
+    func removeBuild(id: String) {
+        trackedBuilds.removeAll { $0.id == id }
+    }
+
+    func clearCompleted() {
+        trackedBuilds.removeAll { $0.isCompleted }
+    }
+
+    func addBuild(url: String) async {
+        guard let parsed = URLParser.parse(url) else {
+            errorState = "Invalid Buildkite URL format"
+            return
+        }
+
+        let ref = (org: parsed.org, pipeline: parsed.pipeline, number: parsed.number)
+        guard !manuallyAddedBuildRefs.contains(where: { $0.org == ref.org && $0.pipeline == ref.pipeline && $0.number == ref.number }) else {
+            errorState = "Build is already being tracked"
+            return
+        }
+
+        do {
+            var build = try await api.fetchBuild(org: parsed.org, pipeline: parsed.pipeline, number: parsed.number)
+            build.addedManually = true
+            manuallyAddedBuildRefs.append(ref)
+
+            if !trackedBuilds.contains(where: { $0.id == build.id }) {
+                trackedBuilds.append(build)
+                trackedBuilds = sortBuilds(trackedBuilds)
+            }
+            hasCompletedFirstFetch = true
+            errorState = nil
+        } catch {
+            handleError(error)
+        }
+    }
+
+    // MARK: - Error Handling
 
     private func handleError(_ error: Error) {
         print("DEBUG: handleError called with: \(error)")
@@ -221,91 +226,6 @@ class BuildMonitor: ObservableObject {
             }
         } else {
             errorState = "Unknown error: \(error.localizedDescription)"
-        }
-    }
-
-    func switchFocus(to build: Build) {
-        // Remove from previouslyFocusedBuilds if it's there (re-focusing)
-        previouslyFocusedBuilds.removeAll { $0.id == build.id }
-
-        focusedBuild = build
-        focusHistory.insert(build.id)  // Track that this build was focused
-        UserDefaults.standard.set(build.id, forKey: "focusedBuildId")
-    }
-
-    func clearFocus() {
-        // If there's a focused build, always move it to previously focused
-        if let focused = focusedBuild {
-            if !previouslyFocusedBuilds.contains(where: { $0.id == focused.id }) {
-                previouslyFocusedBuilds.insert(focused, at: 0)
-            }
-        }
-
-        focusedBuild = nil
-        UserDefaults.standard.removeObject(forKey: "focusedBuildId")
-    }
-
-    func removePreviouslyFocused(_ build: Build) {
-        previouslyFocusedBuilds.removeAll { $0.id == build.id }
-        focusHistory.remove(build.id)
-    }
-
-    func clearCompleted() {
-        completedBuilds.removeAll()
-        previouslyFocusedBuilds.removeAll()
-        focusHistory.removeAll()
-    }
-
-    func addBuild(url: String) async {
-        guard let (org, pipeline, number) = URLParser.parse(url) else {
-            await MainActor.run {
-                errorState = "Invalid Buildkite URL format. Expected: https://buildkite.com/org/pipeline/builds/123"
-            }
-            return
-        }
-
-        do {
-            print("DEBUG: Fetching build from \(org)/\(pipeline)/#\(number)")
-            var build = try await api.fetchBuild(org: org, pipeline: pipeline, number: number)
-            print("DEBUG: Successfully fetched build: \(build.id)")
-            build.addedManually = true
-
-            await MainActor.run {
-                // Store reference for future polling
-                if !manuallyAddedBuildRefs.contains(where: { $0.org == org && $0.pipeline == pipeline && $0.number == number }) {
-                    manuallyAddedBuildRefs.append((org, pipeline, number))
-                }
-
-                // Check if build already exists
-                let alreadyExists = activeBuilds.contains(where: { $0.id == build.id }) ||
-                                   completedBuilds.contains(where: { $0.id == build.id }) ||
-                                   previouslyFocusedBuilds.contains(where: { $0.id == build.id })
-
-                if !alreadyExists {
-                    if build.isActive {
-                        // Insert at the beginning of active builds
-                        activeBuilds.insert(build, at: 0)
-
-                        // Auto-focus if no current focus
-                        if focusedBuild == nil {
-                            focusedBuild = build
-                            focusHistory.insert(build.id)
-                            UserDefaults.standard.set(build.id, forKey: "focusedBuildId")
-                        }
-                    } else if build.isCompleted {
-                        // Manually added completed builds go to "Previously Focused" (user explicitly wants to see them)
-                        previouslyFocusedBuilds.insert(build, at: 0)
-                        focusHistory.insert(build.id)  // Mark as focused so it stays visible
-                    }
-                }
-                hasCompletedFirstFetch = true  // We've successfully fetched a build
-                errorState = nil
-            }
-        } catch {
-            print("DEBUG: Error fetching build: \(error)")
-            await MainActor.run {
-                handleError(error)
-            }
         }
     }
 }

@@ -35,9 +35,9 @@ enum BuildState: String, Codable {
     var iconName: String {
         switch self {
         case .scheduled:
-            return "circle.fill"
+            return "clock.circle"
         case .running:
-            return "circle.fill"
+            return "arrow.circlepath"
         case .passed:
             return "checkmark.circle.fill"
         case .failed:
@@ -45,7 +45,18 @@ enum BuildState: String, Codable {
         case .blocked:
             return "pause.circle.fill"
         case .canceled:
-            return "circle.fill"
+            return "minus.circle.fill"
+        }
+    }
+
+    var sortOrder: Int {
+        switch self {
+        case .running: return 0
+        case .scheduled: return 1
+        case .blocked: return 2
+        case .passed: return 3
+        case .failed: return 4
+        case .canceled: return 5
         }
     }
 }

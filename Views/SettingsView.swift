@@ -219,6 +219,7 @@ struct SettingsView: View {
                 Button("Cancel") {
                     handleCancel()
                 }
+                .buttonStyle(.bordered)
                 .keyboardShortcut(.cancelAction)
 
                 Spacer()
@@ -226,6 +227,7 @@ struct SettingsView: View {
                 Button("Save") {
                     saveSettings()
                 }
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(orgSlugError != nil || apiToken.isEmpty || organizationSlug.isEmpty)
             }
@@ -264,6 +266,8 @@ struct SettingsView: View {
                         .font(.subheadline)
                 }
             }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .disabled(apiToken.isEmpty || organizationSlug.isEmpty || orgSlugError != nil)
 
             Spacer()

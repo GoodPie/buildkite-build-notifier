@@ -43,76 +43,55 @@ class StatusBarController: NSObject, ObservableObject {
     }
 
     private func observeBuildMonitor() {
-        // Combine publishers to update status bar and popover
-        Publishers.CombineLatest3(
-            buildMonitor.$focusedBuild,
-            buildMonitor.$activeBuilds,
-            buildMonitor.$previouslyFocusedBuilds
-        )
-        .debounce(for: .milliseconds(50), scheduler: RunLoop.main)
-        .sink { [weak self] build, activeBuilds, _ in
-            guard let self = self else { return }
-            if self.popover.isShown {
-                // Only refresh popover, defer status bar update to prevent shifting
-                self.refreshPopoverIfNeeded()
-            } else {
-                self.updateStatusBar(for: build, activeCount: activeBuilds.count)
+        buildMonitor.$trackedBuilds
+            .debounce(for: .milliseconds(50), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                if self.popover.isShown {
+                    self.refreshPopover()
+                } else {
+                    self.updateStatusBar()
+                }
             }
-        }
-        .store(in: &cancellables)
+            .store(in: &cancellables)
     }
 
-    private func refreshPopoverIfNeeded() {
+    private func refreshPopover() {
         guard popover.isShown else { return }
         popover.contentViewController = NSHostingController(rootView: MenuView(buildMonitor: buildMonitor))
     }
 
-    private func updateStatusBar(for build: Build?, activeCount: Int) {
-        guard let button = statusItem.button else { return }
+    private func updateStatusBar() {
+        let builds = buildMonitor.trackedBuilds
+        let runningBuilds = builds.filter { $0.state == .running }
+        let completedBuilds = builds.filter { $0.isCompleted }
 
-        if let build = build {
-            // Use colored emoji/text for better visibility
-            let (emoji, statusText) = getStatusDisplay(for: build.state)
+        let attributedString = NSMutableAttributedString()
+        let emojiAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 14)]
+        let textAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11, weight: .medium)]
 
-            // Create attributed string with emoji, build number, and status text
-            let attributedString = NSMutableAttributedString()
-
-            // Add colored emoji
-            let emojiAttributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 14)
-            ]
-            attributedString.append(NSAttributedString(string: emoji, attributes: emojiAttributes))
-
-            // Add build number in bold - using system default color
-            let buildNumberAttributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 11, weight: .semibold)
-            ]
-            attributedString.append(NSAttributedString(string: " #\(build.buildNumber)", attributes: buildNumberAttributes))
-
-            // Add status text - using system default color
-            let textAttributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 11)
-            ]
-            attributedString.append(NSAttributedString(string: " \(statusText)", attributes: textAttributes))
-
-            // Add badge count if multiple builds - using system default color
-            if activeCount > 1 {
-                let badgeAttributes: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 10, weight: .medium)
-                ]
-                attributedString.append(NSAttributedString(string: " (\(activeCount))", attributes: badgeAttributes))
-            }
-
-            button.image = nil
-            button.attributedTitle = attributedString
+        if runningBuilds.count == 1 {
+            let build = runningBuilds[0]
+            let emoji = getStatusDisplay(for: build.state).emoji
+            let branch = truncateBranch(build.branch, maxLength: 25)
+            attributedString.append(NSAttributedString(string: emoji + " ", attributes: emojiAttrs))
+            attributedString.append(NSAttributedString(string: branch, attributes: textAttrs))
+        } else if runningBuilds.count > 1 {
+            let emoji = getStatusDisplay(for: .running).emoji
+            attributedString.append(NSAttributedString(string: emoji + " ", attributes: emojiAttrs))
+            attributedString.append(NSAttributedString(string: "\(runningBuilds.count) running", attributes: textAttrs))
+        } else if let lastCompleted = completedBuilds.first {
+            let emoji = getStatusDisplay(for: lastCompleted.state).emoji
+            let branch = truncateBranch(lastCompleted.branch, maxLength: 25)
+            attributedString.append(NSAttributedString(string: emoji + " ", attributes: emojiAttrs))
+            attributedString.append(NSAttributedString(string: branch, attributes: textAttrs))
         } else {
-            // Idle state
-            button.image = nil
-            button.attributedTitle = NSAttributedString(
-                string: "⚪️ Idle",
-                attributes: [.font: NSFont.systemFont(ofSize: 11)]
-            )
+            attributedString.append(NSAttributedString(string: "⚪️ ", attributes: emojiAttrs))
+            attributedString.append(NSAttributedString(string: "No builds", attributes: textAttrs))
         }
+
+        statusItem.button?.attributedTitle = attributedString
+        statusItem.button?.image = nil
     }
 
     private func getStatusDisplay(for state: BuildState) -> (emoji: String, text: String) {
@@ -130,6 +109,11 @@ class StatusBarController: NSObject, ObservableObject {
         case .canceled:
             return ("⚫️", "Canceled")
         }
+    }
+
+    private func truncateBranch(_ branch: String, maxLength: Int) -> String {
+        if branch.count <= maxLength { return branch }
+        return String(branch.prefix(maxLength - 1)) + "…"
     }
 
     @objc private func togglePopover() {
@@ -153,7 +137,7 @@ class StatusBarController: NSObject, ObservableObject {
 extension StatusBarController: NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         // Update status bar when popover closes (handles both manual close and transient auto-close)
-        updateStatusBar(for: buildMonitor.focusedBuild, activeCount: buildMonitor.activeBuilds.count)
+        updateStatusBar()
     }
 }
 

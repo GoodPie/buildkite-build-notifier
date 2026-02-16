@@ -10,14 +10,28 @@ import SwiftUI
 struct MenuView: View {
     @ObservedObject var buildMonitor: BuildMonitor
     @State private var buildURL: String = ""
-    @State private var showingAddURL: Bool = false
     @State private var showingSettings: Bool = false
+    @State private var expandedBuildId: String? = nil
+
+    private var activeBuilds: [Build] {
+        buildMonitor.trackedBuilds.filter { $0.isActive }
+    }
+
+    private var completedBuilds: [Build] {
+        buildMonitor.trackedBuilds.filter { $0.isCompleted }
+    }
+
+    private var hasBothGroups: Bool {
+        !activeBuilds.isEmpty && !completedBuilds.isEmpty
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             // Error banner
             if let error = buildMonitor.errorState {
-                ErrorBanner(message: error)
+                ErrorBanner(message: error, onDismiss: {
+                    buildMonitor.errorState = nil
+                })
             }
 
             // Loading state - show only until first API response
@@ -33,8 +47,8 @@ struct MenuView: View {
                 .padding()
             }
 
-            // First launch / no configuration message
-            if !buildMonitor.isPolling && buildMonitor.focusedBuild == nil && buildMonitor.activeBuilds.isEmpty {
+            // Welcome view - not polling and no builds
+            if !buildMonitor.isPolling && buildMonitor.trackedBuilds.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "gear")
                         .font(.largeTitle)
@@ -51,135 +65,128 @@ struct MenuView: View {
                 .padding()
             }
 
-            // Focused build section
-            if let focused = buildMonitor.focusedBuild {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Focused Build")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        Spacer()
-
-                        Button("Clear Focus") {
-                            buildMonitor.clearFocus()
-                        }
-                        .font(.caption)
-                        .foregroundColor(.red)
-                    }
-
-                    BuildDetailView(build: focused)
-                }
-                .padding()
-
-                Divider()
-            }
-
-            // Other active builds (not focused, not in previously focused)
-            let otherActiveBuilds = buildMonitor.activeBuilds.filter { build in
-                build.id != buildMonitor.focusedBuild?.id &&
-                !buildMonitor.previouslyFocusedBuilds.contains(where: { $0.id == build.id })
-            }
-
-            if !otherActiveBuilds.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Other Active Builds")
+            // Empty state - polling but no builds tracked
+            if buildMonitor.isPolling && buildMonitor.hasCompletedFirstFetch && buildMonitor.trackedBuilds.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "tray")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary)
+                    Text("No builds tracked")
+                        .font(.headline)
+                    Text("Your active builds will appear here, or paste a Buildkite URL below to track a specific build.")
                         .font(.caption)
                         .foregroundColor(.secondary)
-
-                    ForEach(otherActiveBuilds) { build in
-                        BuildRowView(build: build, showFocusButton: true, onFocus: {
-                            buildMonitor.switchFocus(to: build)
-                        })
-                    }
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
                 }
+                .frame(maxWidth: .infinity)
                 .padding()
-
-                Divider()
             }
 
-            // Previously Focused Builds (completed builds that were focused)
-            if !buildMonitor.previouslyFocusedBuilds.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Previously Focused")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-
-                        Spacer()
-
-                        Button("Clear All") {
-                            buildMonitor.clearCompleted()
-                        }
-                        .font(.caption)
-                    }
-
-                    ForEach(buildMonitor.previouslyFocusedBuilds) { build in
-                        BuildRowView(
-                            build: build,
-                            showFocusButton: true,
-                            showRemoveButton: true,
-                            onFocus: {
-                                buildMonitor.switchFocus(to: build)
-                            },
-                            onRemove: {
-                                buildMonitor.removePreviouslyFocused(build)
+            // Build list
+            if !buildMonitor.trackedBuilds.isEmpty {
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        // Active builds
+                        if !activeBuilds.isEmpty {
+                            if hasBothGroups {
+                                Text("ACTIVE")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .textCase(.uppercase)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, 8)
+                                    .padding(.bottom, 2)
                             }
-                        )
-                    }
-                }
-                .padding()
 
-                Divider()
-            }
-
-            // Add by URL section
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Button(showingAddURL ? "Cancel" : "Add by URL") {
-                    showingAddURL.toggle()
-                    if !showingAddURL {
-                        buildURL = ""
-                    }
-                }
-                .font(.caption)
-
-                if showingAddURL {
-                    HStack {
-                        TextField("https://buildkite.com/org/pipeline/builds/123", text: $buildURL)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.caption)
-
-                        Button("Add") {
-                            Task {
-                                await buildMonitor.addBuild(url: buildURL)
-                                buildURL = ""
-                                showingAddURL = false
+                            ForEach(activeBuilds) { build in
+                                BuildCardView(
+                                    build: build,
+                                    isExpanded: expandedBuildId == build.id,
+                                    onTap: { toggleExpansion(build.id) },
+                                    onRemove: { buildMonitor.removeBuild(id: build.id) }
+                                )
+                                .padding(.horizontal, 8)
                             }
                         }
-                        .font(.caption)
-                        .disabled(buildURL.isEmpty)
+
+                        // Completed builds
+                        if !completedBuilds.isEmpty {
+                            if hasBothGroups {
+                                Text("COMPLETED")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .textCase(.uppercase)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, 8)
+                                    .padding(.bottom, 2)
+                            }
+
+                            ForEach(completedBuilds) { build in
+                                BuildCardView(
+                                    build: build,
+                                    isExpanded: expandedBuildId == build.id,
+                                    onTap: { toggleExpansion(build.id) },
+                                    onRemove: { buildMonitor.removeBuild(id: build.id) }
+                                )
+                                .padding(.horizontal, 8)
+                            }
+
+                            // Clear Completed button when 2+ completed
+                            if completedBuilds.count >= 2 {
+                                Button("Clear Completed") {
+                                    buildMonitor.clearCompleted()
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.red)
+                                .font(.caption)
+                                .controlSize(.small)
+                                .padding(.horizontal, 12)
+                                .padding(.top, 4)
+                                .padding(.bottom, 8)
+                            }
+                        }
                     }
+                    .padding(.vertical, 4)
                 }
             }
-            .padding()
 
-            // Actions
             Divider()
 
+            // Always-visible Add by URL section
+            HStack(spacing: 6) {
+                TextField("Paste Buildkite URL...", text: $buildURL)
+                    .textFieldStyle(.plain)
+                    .font(.caption)
+                    .padding(6)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .cornerRadius(6)
+                    .onSubmit { addBuild() }
+
+                Button("Add") { addBuild() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(buildURL.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            Divider()
+
+            // Footer buttons
             HStack {
-                Button("Settings") {
-                    showingSettings = true
-                }
-
+                Button("Settings") { showingSettings = true }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 Spacer()
-
-                Button("Quit") {
-                    NSApplication.shared.terminate(nil)
-                }
+                Button("Quit") { NSApplication.shared.terminate(nil) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             }
-            .padding()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
         }
         .frame(width: 360)
         .sheet(isPresented: $showingSettings) {
@@ -187,10 +194,173 @@ struct MenuView: View {
                 .interactiveDismissDisabled(false)
         }
     }
+
+    private func toggleExpansion(_ buildId: String) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            if expandedBuildId == buildId {
+                expandedBuildId = nil
+            } else {
+                expandedBuildId = buildId
+            }
+        }
+    }
+
+    private func addBuild() {
+        let trimmed = buildURL.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        Task {
+            await buildMonitor.addBuild(url: trimmed)
+            buildURL = ""
+        }
+    }
 }
+
+// MARK: - BuildCardView
+
+struct BuildCardView: View {
+    let build: Build
+    let isExpanded: Bool
+    let onTap: () -> Void
+    let onRemove: () -> Void
+
+    @State private var isHovering: Bool = false
+    @State private var currentDuration: TimeInterval?
+    @State private var timer: Timer?
+    @State private var isCommitExpanded: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Always visible (collapsed) row
+            HStack(alignment: .top, spacing: 8) {
+                // State icon
+                Image(systemName: build.state.iconName)
+                    .foregroundColor(Color.from(build.state.color))
+                    .frame(width: 16, alignment: .center)
+                    .padding(.top, 2)
+
+                // Branch + pipeline
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(build.branch)
+                        .font(.body)
+                        .fontWeight(.semibold)
+                        .lineLimit(1)
+
+                    Text(build.pipelineName)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                // Duration
+                if let duration = currentDuration {
+                    Text(Build.formatDuration(duration))
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 2)
+                }
+
+                // Chevron
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .animation(.easeInOut(duration: 0.2), value: isExpanded)
+                    .padding(.top, 2)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { onTap() }
+
+            // Expanded detail
+            if isExpanded {
+                Divider()
+                    .padding(.vertical, 6)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    // Commit message
+                    Text(build.commitMessage)
+                        .font(.caption)
+                        .lineLimit(isCommitExpanded ? nil : 2)
+                        .onTapGesture { isCommitExpanded.toggle() }
+
+                    // Build steps
+                    if let steps = build.steps, !steps.isEmpty {
+                        BuildStepsSection(build: build)
+                    }
+
+                    // Action buttons
+                    HStack(spacing: 8) {
+                        if let url = URL(string: build.webUrl) {
+                            Link(destination: url) {
+                                Text("Open in Buildkite")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+
+                        Button("Remove") {
+                            onRemove()
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                        .controlSize(.small)
+                    }
+                }
+                .padding(.leading, 24)
+            }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .quaternarySystemFill).opacity(isHovering ? 1.0 : 0.5))
+        )
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .onAppear {
+            startTimer()
+        }
+        .onDisappear {
+            stopTimer()
+        }
+        .onChange(of: build.state) { _, _ in
+            if build.isCompleted {
+                stopTimer()
+                currentDuration = build.runningDuration
+            }
+        }
+    }
+
+    private func startTimer() {
+        stopTimer()
+        currentDuration = build.runningDuration
+
+        // Only start live timer for active builds with a startedAt date
+        if build.isActive, build.startedAt != nil {
+            timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                if let started = build.startedAt {
+                    if let finished = build.finishedAt {
+                        currentDuration = finished.timeIntervalSince(started)
+                    } else {
+                        currentDuration = Date().timeIntervalSince(started)
+                    }
+                }
+            }
+        }
+    }
+
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+    }
+}
+
+// MARK: - ErrorBanner
 
 struct ErrorBanner: View {
     let message: String
+    var onDismiss: (() -> Void)? = nil
 
     var body: some View {
         HStack {
@@ -199,200 +369,21 @@ struct ErrorBanner: View {
             Text(message)
                 .font(.caption)
             Spacer()
+            if let onDismiss = onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(8)
         .background(Color.yellow.opacity(0.2))
     }
 }
 
-struct BuildDetailView: View {
-    let build: Build
-    @State private var currentDuration: TimeInterval?
-    @State private var timer: Timer?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: build.state.iconName)
-                    .foregroundColor(Color.from(build.state.color))
-                Text(build.displayTitle)
-                    .font(.headline)
-
-                Spacer()
-
-                // Show duration for active or completed builds
-                if let duration = currentDuration {
-                    Text(Build.formatDuration(duration))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(4)
-                }
-            }
-
-            Text(build.branch)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-
-            Text(build.commitMessage)
-                .font(.caption)
-                .lineLimit(2)
-                .foregroundColor(.primary)
-
-            Link(destination: URL(string: build.webUrl)!) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.up.right.square")
-                        .font(.caption)
-                    Text("Open in Buildkite")
-                        .font(.caption)
-                }
-            }
-
-            // Build Steps (if available)
-            if let steps = build.steps, !steps.isEmpty {
-                Divider()
-                    .padding(.vertical, 4)
-
-                BuildStepsSection(build: build)
-            }
-        }
-        .onAppear {
-            startTimer()
-        }
-        .onDisappear {
-            stopTimer()
-        }
-        .onChange(of: build.id) { _, _ in
-            startTimer()
-        }
-        .onChange(of: build.state) { _, _ in
-            // Stop timer when build completes and freeze at completion time
-            if build.isCompleted {
-                stopTimer()
-                currentDuration = build.runningDuration
-            }
-        }
-    }
-
-    private func startTimer() {
-        stopTimer()
-        currentDuration = build.runningDuration
-
-        // Only start timer if build is running (not completed)
-        if build.isActive, build.startedAt != nil {
-            timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-                if let started = build.startedAt {
-                    if let finished = build.finishedAt {
-                        currentDuration = finished.timeIntervalSince(started)
-                    } else {
-                        currentDuration = Date().timeIntervalSince(started)
-                    }
-                }
-            }
-        }
-    }
-
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
-    }
-}
-
-struct BuildRowView: View {
-    let build: Build
-    var showFocusButton: Bool = true
-    var showRemoveButton: Bool = false
-    var onFocus: (() -> Void)?
-    var onRemove: (() -> Void)?
-    @State private var currentDuration: TimeInterval?
-    @State private var timer: Timer?
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            Image(systemName: build.state.iconName)
-                .foregroundColor(Color.from(build.state.color))
-                .frame(width: 16)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(build.displayTitle)
-                    .font(.subheadline)
-                HStack(spacing: 4) {
-                    Text(build.branch)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    if let duration = currentDuration {
-                        Text("•")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text(Build.formatDuration(duration))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-            }
-
-            Spacer()
-
-            if showFocusButton, let onFocus = onFocus {
-                Button("Focus") {
-                    onFocus()
-                }
-                .font(.caption)
-                .buttonStyle(.borderless)
-            }
-
-            if showRemoveButton, let onRemove = onRemove {
-                Button(action: onRemove) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Remove from list")
-            }
-        }
-        .onAppear {
-            startTimer()
-        }
-        .onDisappear {
-            stopTimer()
-        }
-        .onChange(of: build.id) { _, _ in
-            startTimer()
-        }
-        .onChange(of: build.state) { _, _ in
-            // Stop timer when build completes and freeze at completion time
-            if build.isCompleted {
-                stopTimer()
-                currentDuration = build.runningDuration
-            }
-        }
-    }
-
-    private func startTimer() {
-        stopTimer()
-        currentDuration = build.runningDuration
-
-        // Only start timer if build is running (not completed)
-        if build.isActive, build.startedAt != nil {
-            timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-                if let started = build.startedAt {
-                    if let finished = build.finishedAt {
-                        currentDuration = finished.timeIntervalSince(started)
-                    } else {
-                        currentDuration = Date().timeIntervalSince(started)
-                    }
-                }
-            }
-        }
-    }
-
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
-    }
-}
+// MARK: - Build Step Views
 
 struct BuildStepRowView: View {
     let step: BuildStep
@@ -501,7 +492,13 @@ struct CollapsibleBuildStepGroupView: View {
 
 struct BuildStepsSection: View {
     let build: Build
-    @State private var expandedGroups: Set<String> = []
+    @State private var expandedGroups: Set<String>
+
+    init(build: Build) {
+        self.build = build
+        // Default all groups to expanded
+        _expandedGroups = State(initialValue: Set(build.groupedSteps.map { $0.id }))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -546,6 +543,8 @@ struct BuildStepsSection: View {
     }
 }
 
+// MARK: - Color Extension
+
 extension Color {
     static func from(_ colorName: String) -> Color {
         switch colorName {
@@ -564,4 +563,3 @@ extension Color {
         }
     }
 }
-

@@ -10,9 +10,7 @@ import UserNotifications
 
 /// Notification service for macOS system notifications
 /// Handles notification permissions and build state change notifications
-/// Notification logic:
-/// - Focused builds: Notify on ALL state changes (scheduled, running, passed, failed, blocked)
-/// - Non-focused builds: Notify ONLY on completion (passed, failed, canceled)
+/// Notification logic: Notify on build completion only (passed, failed, canceled)
 class NotificationService {
     private let center = UNUserNotificationCenter.current()
 
@@ -29,12 +27,9 @@ class NotificationService {
         }
     }
 
-    func sendNotification(for build: Build, oldState: BuildState, isFocused: Bool) {
-        // Focused builds: notify on all state changes
-        // Non-focused: notify only on completion
-        if !isFocused && !build.isCompleted {
-            return
-        }
+    func sendNotification(for build: Build, oldState: BuildState) {
+        // Only notify on build completion
+        guard build.isCompleted else { return }
 
         let content = UNMutableNotificationContent()
         content.title = build.pipelineName
@@ -57,18 +52,14 @@ class NotificationService {
 
     private func notificationMessage(for build: Build, oldState: BuildState) -> String {
         switch build.state {
-        case .scheduled:
-            return "Build #\(build.buildNumber) scheduled"
-        case .running:
-            return "Build #\(build.buildNumber) started"
         case .passed:
-            return "Build #\(build.buildNumber) passed ✅"
+            return "\(build.branch) passed"
         case .failed:
-            return "Build #\(build.buildNumber) failed ❌"
-        case .blocked:
-            return "Build #\(build.buildNumber) blocked (waiting for approval)"
+            return "\(build.branch) failed"
         case .canceled:
-            return "Build #\(build.buildNumber) canceled"
+            return "\(build.branch) canceled"
+        default:
+            return "\(build.branch) - \(build.state.rawValue)"
         }
     }
 }
