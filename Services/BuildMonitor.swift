@@ -22,6 +22,7 @@ class BuildMonitor: ObservableObject {
     private var userId: String?
     private var orgSlug: String?
     private var manuallyAddedBuildRefs: [(org: String, pipeline: String, number: Int)] = []  // Track manually added builds for polling
+    private var dismissedBuildIDs: Set<String> = []  // Builds explicitly removed by user, skip on re-fetch
 
     var badgeCount: Int {
         trackedBuilds.filter { $0.isActive }.count
@@ -141,6 +142,7 @@ class BuildMonitor: ObservableObject {
         var updatedBuilds = trackedBuilds
 
         for var newBuild in newBuilds {
+            if dismissedBuildIDs.contains(newBuild.id) { continue }
             if let existingIndex = updatedBuilds.firstIndex(where: { $0.id == newBuild.id }) {
                 let existing = updatedBuilds[existingIndex]
                 if existing.addedManually { newBuild.addedManually = true }
@@ -164,10 +166,23 @@ class BuildMonitor: ObservableObject {
     // MARK: - Build Management
 
     func removeBuild(id: String) {
+        dismissedBuildIDs.insert(id)
+        if let build = trackedBuilds.first(where: { $0.id == id }), build.addedManually {
+            manuallyAddedBuildRefs.removeAll {
+                $0.org == build.organizationSlug && $0.pipeline == build.pipelineSlug && $0.number == build.buildNumber
+            }
+        }
         trackedBuilds.removeAll { $0.id == id }
     }
 
     func clearCompleted() {
+        let completed = trackedBuilds.filter { $0.isCompleted }
+        dismissedBuildIDs.formUnion(completed.map { $0.id })
+        for build in completed where build.addedManually {
+            manuallyAddedBuildRefs.removeAll {
+                $0.org == build.organizationSlug && $0.pipeline == build.pipelineSlug && $0.number == build.buildNumber
+            }
+        }
         trackedBuilds.removeAll { $0.isCompleted }
     }
 
@@ -186,6 +201,7 @@ class BuildMonitor: ObservableObject {
         do {
             var build = try await api.fetchBuild(org: parsed.org, pipeline: parsed.pipeline, number: parsed.number)
             build.addedManually = true
+            dismissedBuildIDs.remove(build.id)
             manuallyAddedBuildRefs.append(ref)
 
             if !trackedBuilds.contains(where: { $0.id == build.id }) {
