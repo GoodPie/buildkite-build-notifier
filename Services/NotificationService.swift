@@ -28,7 +28,7 @@ class NotificationService {
                 Logger.notifications.error("Notification authorization error: \(error.localizedDescription)")
                 if let log = self.diagnosticLog {
                     Task { @MainActor in
-                        log.log(code: .notificationDenied, message: "Notification authorization failed", detail: error.localizedDescription)
+                        log.log(code: .notificationDenied, message: "Notification authorization failed", detail: error.localizedDescription, level: .error)
                     }
                 }
             }
@@ -56,7 +56,7 @@ class NotificationService {
                 Logger.notifications.error("Failed to deliver notification: \(error.localizedDescription)")
                 if let log = self.diagnosticLog {
                     Task { @MainActor in
-                        log.log(code: .notificationFailed, message: "Failed to deliver notification", detail: error.localizedDescription)
+                        log.log(code: .notificationFailed, message: "Failed to deliver notification", detail: error.localizedDescription, level: .error)
                     }
                 }
             }

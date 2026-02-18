@@ -50,6 +50,7 @@ class BuildMonitor: ObservableObject {
             let user = try await api.fetchUser()
             self.userId = user.id
             isPolling = true
+            diagnosticLog.log(code: .monitoringStarted, message: "Monitoring started", level: .info)
             await fetchBuilds()
             startPollingTimer()
         } catch {
@@ -61,6 +62,7 @@ class BuildMonitor: ObservableObject {
         pollingTimer?.invalidate()
         pollingTimer = nil
         isPolling = false
+        diagnosticLog.log(code: .monitoringStopped, message: "Monitoring stopped", level: .info)
     }
 
     private func startPollingTimer() {
@@ -192,7 +194,7 @@ class BuildMonitor: ObservableObject {
     func addBuild(url: String) async {
         guard let parsed = URLParser.parse(url) else {
             errorState = "[BN-URL] Invalid Buildkite URL format"
-            diagnosticLog.log(code: .invalidURL, message: "Invalid Buildkite URL format")
+            diagnosticLog.log(code: .invalidURL, message: "Invalid Buildkite URL format", level: .warning)
             Logger.monitor.warning("Invalid Buildkite URL format provided")
             return
         }
@@ -200,7 +202,7 @@ class BuildMonitor: ObservableObject {
         let ref = (org: parsed.org, pipeline: parsed.pipeline, number: parsed.number)
         guard !manuallyAddedBuildRefs.contains(where: { $0.org == ref.org && $0.pipeline == ref.pipeline && $0.number == ref.number }) else {
             errorState = "[BN-DUP] Build is already being tracked"
-            diagnosticLog.log(code: .duplicateBuild, message: "Build is already being tracked")
+            diagnosticLog.log(code: .duplicateBuild, message: "Build is already being tracked", level: .warning)
             return
         }
 
@@ -228,40 +230,48 @@ class BuildMonitor: ObservableObject {
             let code = DiagnosticCode.from(apiError)
             let message: String
             let detail: String?
+            let level: DiagnosticLevel
 
             switch apiError {
             case .unauthorized:
                 message = "API token is invalid or expired. Click Settings to update."
                 detail = nil
+                level = .error
                 stopMonitoring()
             case .organizationNotFound:
                 message = "Organization not found. Check Settings."
                 detail = nil
+                level = .error
                 stopMonitoring()
             case .networkError(let underlyingError):
                 message = "Network error: \(underlyingError.localizedDescription). Retrying..."
                 detail = String(describing: underlyingError)
+                level = .warning
             case .rateLimited:
                 message = "Buildkite API rate limit reached. Increase polling interval."
                 detail = nil
+                level = .warning
             case .buildNotFound:
                 message = "Build not found. It may have been deleted."
                 detail = nil
+                level = .warning
             case .invalidResponse:
                 message = "Invalid API response. Check your network connection."
                 detail = nil
+                level = .error
             case .decodingError(let underlyingError):
                 message = "Failed to parse API response: \(underlyingError.localizedDescription)"
                 detail = String(describing: underlyingError)
+                level = .error
             }
 
             errorState = "[\(code.rawValue)] \(message)"
-            diagnosticLog.log(code: code, message: message, detail: detail)
+            diagnosticLog.log(code: code, message: message, detail: detail, level: level)
             Logger.api.error("[\(code.rawValue)] \(message)")
         } else {
             let message = "Unknown error: \(error.localizedDescription)"
             errorState = "[BN-UNK] \(message)"
-            diagnosticLog.log(code: .unknown, message: message, detail: String(describing: error))
+            diagnosticLog.log(code: .unknown, message: message, detail: String(describing: error), level: .error)
             Logger.monitor.error("[BN-UNK] \(message)")
         }
     }

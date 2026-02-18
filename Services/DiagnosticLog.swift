@@ -20,7 +20,7 @@ extension Logger {
 
 // MARK: - Diagnostic Codes
 
-enum DiagnosticCode: String {
+enum DiagnosticCode: String, Codable {
     // API errors (BK- prefix)
     case apiUnauthorized = "BK-401"
     case apiNotFound = "BK-404"
@@ -37,6 +37,10 @@ enum DiagnosticCode: String {
     case duplicateBuild = "BN-DUP"
     case unknown = "BN-UNK"
 
+    // Info-level events
+    case monitoringStarted = "BN-MON"
+    case monitoringStopped = "BN-STP"
+
     static func from(_ apiError: APIError) -> DiagnosticCode {
         switch apiError {
         case .unauthorized: return .apiUnauthorized
@@ -50,14 +54,37 @@ enum DiagnosticCode: String {
     }
 }
 
+// MARK: - Diagnostic Level
+
+enum DiagnosticLevel: String, Codable, Comparable {
+    case info
+    case warning
+    case error
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        let order: [DiagnosticLevel] = [.info, .warning, .error]
+        return order.firstIndex(of: lhs)! < order.firstIndex(of: rhs)!
+    }
+}
+
 // MARK: - Diagnostic Entry
 
-struct DiagnosticEntry: Identifiable {
-    let id = UUID()
+struct DiagnosticEntry: Identifiable, Codable {
+    let id: UUID
     let timestamp: Date
     let code: DiagnosticCode
     let message: String
     let detail: String?
+    let level: DiagnosticLevel
+
+    init(id: UUID = UUID(), timestamp: Date = Date(), code: DiagnosticCode, message: String, detail: String? = nil, level: DiagnosticLevel = .error) {
+        self.id = id
+        self.timestamp = timestamp
+        self.code = code
+        self.message = message
+        self.detail = detail
+        self.level = level
+    }
 }
 
 // MARK: - Diagnostic Log
@@ -68,20 +95,35 @@ class DiagnosticLog: ObservableObject {
 
     private let maxEntries = 50
 
+    private static var logFileURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appDir = appSupport.appendingPathComponent("com.goodpie.BuildkiteNotifier")
+        try? FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
+        return appDir.appendingPathComponent("diagnostic_log.json")
+    }
+
+    init() {
+        loadFromDisk()
+    }
+
     var recentEntries: [DiagnosticEntry] {
         Array(entries.suffix(10).reversed())
     }
 
-    var errorCount: Int {
-        entries.count
+    var recentErrors: [DiagnosticEntry] {
+        Array(entries.filter { $0.level == .error }.suffix(10).reversed())
     }
 
-    func log(code: DiagnosticCode, message: String, detail: String? = nil) {
+    var errorCount: Int {
+        entries.filter { $0.level == .error }.count
+    }
+
+    func log(code: DiagnosticCode, message: String, detail: String? = nil, level: DiagnosticLevel = .error) {
         let entry = DiagnosticEntry(
-            timestamp: Date(),
             code: code,
             message: message,
-            detail: detail
+            detail: detail,
+            level: level
         )
         entries.append(entry)
 
@@ -89,9 +131,33 @@ class DiagnosticLog: ObservableObject {
         if entries.count > maxEntries {
             entries.removeFirst(entries.count - maxEntries)
         }
+
+        saveToDisk()
     }
 
     func clear() {
         entries.removeAll()
+        saveToDisk()
+    }
+
+    // MARK: - Persistence
+
+    private func loadFromDisk() {
+        do {
+            let data = try Data(contentsOf: Self.logFileURL)
+            entries = try JSONDecoder().decode([DiagnosticEntry].self, from: data)
+        } catch {
+            // Silently ignore — fresh start or corrupted file
+        }
+    }
+
+    private func saveToDisk() {
+        do {
+            let data = try JSONEncoder().encode(entries)
+            try data.write(to: Self.logFileURL, options: .atomic)
+        } catch {
+            // Graceful degradation — log still works in-memory
+            Logger.app.warning("Failed to persist diagnostic log: \(error.localizedDescription)")
+        }
     }
 }

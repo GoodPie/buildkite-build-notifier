@@ -80,19 +80,20 @@ struct DiagnosticReport {
         }
 
         lines.append("")
-        lines.append("Recent Errors (last 20)")
+        lines.append("Recent Log (last 20)")
         lines.append(divider)
 
-        let recentErrors = Array(diagnosticLog.entries.suffix(20))
-        if recentErrors.isEmpty {
+        let recentEntries = Array(diagnosticLog.entries.suffix(20))
+        if recentEntries.isEmpty {
             lines.append("(none)")
         } else {
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "HH:mm:ss"
 
-            for entry in recentErrors {
+            for entry in recentEntries {
                 let time = dateFormatter.string(from: entry.timestamp)
-                var line = "[\(time)] [\(entry.code.rawValue)] \(entry.message)"
+                let levelLabel = entry.level.rawValue.uppercased()
+                var line = "[\(time)] [\(levelLabel)] [\(entry.code.rawValue)] \(entry.message)"
                 if let detail = entry.detail {
                     line += " | \(detail)"
                 }

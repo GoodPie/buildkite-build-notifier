@@ -36,7 +36,7 @@ struct DebugInfoView: View {
             // Recent errors quick-glance
             if !diagnosticLog.recentEntries.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("RECENT ERRORS")
+                    Text("RECENT EVENTS")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .textCase(.uppercase)
@@ -52,7 +52,7 @@ struct DebugInfoView: View {
                             Text(entry.code.rawValue)
                                 .font(.caption)
                                 .fontWeight(.semibold)
-                                .foregroundColor(.red)
+                                .foregroundColor(colorForLevel(entry.level))
 
                             Text(entry.message)
                                 .font(.caption)
@@ -107,5 +107,13 @@ struct DebugInfoView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
         return formatter.string(from: date)
+    }
+
+    private func colorForLevel(_ level: DiagnosticLevel) -> Color {
+        switch level {
+        case .error: return .red
+        case .warning: return .orange
+        case .info: return .secondary
+        }
     }
 }
