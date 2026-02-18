@@ -43,6 +43,8 @@
 			membershipExceptions = (
 				BuildkiteAPI.swift,
 				BuildMonitor.swift,
+				DiagnosticLog.swift,
+				DiagnosticReport.swift,
 				NotificationService.swift,
 				URLParser.swift,
 			);
@@ -51,6 +53,7 @@
 		C105AE612EAB523400F10BFF /* Exceptions for "Views" folder in "BuildkiteNotifier" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				DebugInfoView.swift,
 				MenuView.swift,
 				SettingsView.swift,
 				StatusBarController.swift,

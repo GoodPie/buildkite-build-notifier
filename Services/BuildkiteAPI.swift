@@ -113,6 +113,8 @@ class BuildkiteAPI {
             return buildResponses.map { $0.toBuild(orgSlug: orgSlug) }
         } catch let error as APIError {
             throw error
+        } catch let error as DecodingError {
+            throw APIError.decodingError(error)
         } catch {
             throw APIError.networkError(error)
         }
@@ -159,6 +161,8 @@ class BuildkiteAPI {
             return buildResponse.toBuild(orgSlug: org)
         } catch let error as APIError {
             throw error
+        } catch let error as DecodingError {
+            throw APIError.decodingError(error)
         } catch {
             throw APIError.networkError(error)
         }

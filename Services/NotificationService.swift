@@ -7,22 +7,31 @@
 
 import Foundation
 import UserNotifications
+import os
 
 /// Notification service for macOS system notifications
 /// Handles notification permissions and build state change notifications
-/// Notification logic: Notify on build completion only (passed, failed, canceled)
+/// Notification logic: Notify on build completion only (all completed states such as passed, failed, canceled, skipped, notRun, waitingFailed)
 class NotificationService {
     private let center = UNUserNotificationCenter.current()
+    private let diagnosticLog: DiagnosticLog?
 
-    init() {
+    init(diagnosticLog: DiagnosticLog? = nil) {
+        self.diagnosticLog = diagnosticLog
         requestAuthorization()
     }
 
     /// Request notification permissions from the user on initialization
     private func requestAuthorization() {
+        let log = self.diagnosticLog
         center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error = error {
-                print("Notification authorization error: \(error)")
+                Logger.notifications.error("Notification authorization error: \(error.localizedDescription)")
+                if let log {
+                    Task { @MainActor in
+                        log.log(code: .notificationDenied, message: "Notification authorization failed", detail: error.localizedDescription, level: .error)
+                    }
+                }
             }
         }
     }
@@ -43,9 +52,15 @@ class NotificationService {
             trigger: nil // Immediate delivery
         )
 
+        let log = self.diagnosticLog
         center.add(request) { error in
             if let error = error {
-                print("Notification error: \(error)")
+                Logger.notifications.error("Failed to deliver notification: \(error.localizedDescription)")
+                if let log {
+                    Task { @MainActor in
+                        log.log(code: .notificationFailed, message: "Failed to deliver notification", detail: error.localizedDescription, level: .error)
+                    }
+                }
             }
         }
     }
@@ -58,8 +73,14 @@ class NotificationService {
             return "\(build.branch) failed"
         case .canceled:
             return "\(build.branch) canceled"
-        default:
-            return "\(build.branch) - \(build.state.rawValue)"
+        case .skipped:
+            return "\(build.branch) was skipped"
+        case .notRun:
+            return "\(build.branch) did not run"
+        case .waitingFailed:
+            return "\(build.branch) waiting failed"
+        case .scheduled, .running, .blocked, .canceling, .waiting, .unknown:
+            return "\(build.branch) - \(build.state.displayName)"
         }
     }
 }

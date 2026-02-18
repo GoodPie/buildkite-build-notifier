@@ -180,7 +180,9 @@ struct MenuView: View {
                 Button("Settings") { showingSettings = true }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+
                 Spacer()
+
                 Button("Quit") { NSApplication.shared.terminate(nil) }
                     .buttonStyle(.bordered)
                     .controlSize(.small)

@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import os
 
 @MainActor
 class BuildMonitor: ObservableObject {
@@ -16,8 +17,10 @@ class BuildMonitor: ObservableObject {
     @Published var lastUpdateTime: Date?
     @Published var hasCompletedFirstFetch: Bool = false  // Track if we've fetched at least once
 
+    let diagnosticLog = DiagnosticLog()
+
     private let api = BuildkiteAPI()
-    private let notificationService = NotificationService()
+    private lazy var notificationService = NotificationService(diagnosticLog: diagnosticLog)
     private var pollingTimer: Timer?
     private var userId: String?
     private var orgSlug: String?
@@ -47,6 +50,7 @@ class BuildMonitor: ObservableObject {
             let user = try await api.fetchUser()
             self.userId = user.id
             isPolling = true
+            diagnosticLog.log(code: .monitoringStarted, message: "Monitoring started", level: .info)
             await fetchBuilds()
             startPollingTimer()
         } catch {
@@ -58,6 +62,7 @@ class BuildMonitor: ObservableObject {
         pollingTimer?.invalidate()
         pollingTimer = nil
         isPolling = false
+        diagnosticLog.log(code: .monitoringStopped, message: "Monitoring stopped", level: .info)
     }
 
     private func startPollingTimer() {
@@ -112,7 +117,7 @@ class BuildMonitor: ObservableObject {
             } catch {
                 // Build might have been deleted or is inaccessible
                 // Continue with other builds
-                print("Failed to fetch manually added build \(ref.org)/\(ref.pipeline)/#\(ref.number): \(error)")
+                Logger.monitor.warning("Failed to fetch manually added build: \(error.localizedDescription)")
             }
         }
 
@@ -188,13 +193,16 @@ class BuildMonitor: ObservableObject {
 
     func addBuild(url: String) async {
         guard let parsed = URLParser.parse(url) else {
-            errorState = "Invalid Buildkite URL format"
+            errorState = "[BN-URL] Invalid Buildkite URL format"
+            diagnosticLog.log(code: .invalidURL, message: "Invalid Buildkite URL format", level: .warning)
+            Logger.monitor.warning("Invalid Buildkite URL format provided")
             return
         }
 
         let ref = (org: parsed.org, pipeline: parsed.pipeline, number: parsed.number)
         guard !manuallyAddedBuildRefs.contains(where: { $0.org == ref.org && $0.pipeline == ref.pipeline && $0.number == ref.number }) else {
-            errorState = "Build is already being tracked"
+            errorState = "[BN-DUP] Build is already being tracked"
+            diagnosticLog.log(code: .duplicateBuild, message: "Build is already being tracked", level: .warning)
             return
         }
 
@@ -218,30 +226,53 @@ class BuildMonitor: ObservableObject {
     // MARK: - Error Handling
 
     private func handleError(_ error: Error) {
-        print("DEBUG: handleError called with: \(error)")
         if let apiError = error as? APIError {
+            let code = DiagnosticCode.from(apiError)
+            let message: String
+            let detail: String?
+            let level: DiagnosticLevel
+
             switch apiError {
             case .unauthorized:
-                errorState = "API token is invalid or expired. Click Settings to update."
+                message = "API token is invalid or expired. Click Settings to update."
+                detail = nil
+                level = .error
                 stopMonitoring()
             case .organizationNotFound:
-                errorState = "Organization not found. Check Settings."
+                message = "Organization not found. Check Settings."
+                detail = nil
+                level = .error
                 stopMonitoring()
             case .networkError(let underlyingError):
-                errorState = "Network error: \(underlyingError.localizedDescription). Retrying..."
-                print("DEBUG: Network error details: \(underlyingError)")
+                message = "Network error: \(underlyingError.localizedDescription). Retrying..."
+                detail = String(describing: underlyingError)
+                level = .warning
             case .rateLimited:
-                errorState = "Buildkite API rate limit reached. Increase polling interval."
+                message = "Buildkite API rate limit reached. Increase polling interval."
+                detail = nil
+                level = .warning
             case .buildNotFound:
-                errorState = "Build not found. It may have been deleted."
+                message = "Build not found. It may have been deleted."
+                detail = nil
+                level = .warning
             case .invalidResponse:
-                errorState = "Invalid API response. Check your network connection."
+                message = "Invalid API response. Check your network connection."
+                detail = nil
+                level = .error
             case .decodingError(let underlyingError):
-                errorState = "Failed to parse API response: \(underlyingError.localizedDescription)"
-                print("DEBUG: Decoding error details: \(underlyingError)")
+                message = "Failed to parse API response: \(underlyingError.localizedDescription)"
+                detail = String(describing: underlyingError)
+                level = .error
             }
+
+            errorState = "[\(code.rawValue)] \(message)"
+            diagnosticLog.log(code: code, message: message, detail: detail, level: level)
+            Logger.api.error("[\(code.rawValue)] \(message)")
         } else {
-            errorState = "Unknown error: \(error.localizedDescription)"
+            let message = "Unknown error: \(error.localizedDescription)"
+            errorState = "[BN-UNK] \(message)"
+            diagnosticLog.log(code: .unknown, message: message, detail: String(describing: error), level: .error)
+            Logger.monitor.error("[BN-UNK] \(message)")
         }
     }
 }

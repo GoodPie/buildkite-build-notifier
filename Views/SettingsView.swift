@@ -119,6 +119,7 @@ struct SettingsView: View {
     @State private var connectionTestState: ConnectionTestState = .idle
     @State private var hasUnsavedChanges: Bool = false
     @State private var showingDiscardAlert: Bool = false
+    @State private var showingDebugInfo: Bool = false
 
     enum ConnectionTestState {
         case idle
@@ -222,6 +223,25 @@ struct SettingsView: View {
                 .buttonStyle(.bordered)
                 .keyboardShortcut(.cancelAction)
 
+                Button(action: { showingDebugInfo = true }) {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "ladybug")
+                            .font(.body)
+
+                        if buildMonitor.diagnosticLog.errorCount > 0 {
+                            Text("\(buildMonitor.diagnosticLog.errorCount)")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(2)
+                                .background(Color.red)
+                                .clipShape(Circle())
+                                .offset(x: 6, y: -6)
+                        }
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
                 Spacer()
 
                 Button("Save") {
@@ -241,6 +261,9 @@ struct SettingsView: View {
             }
         } message: {
             Text("Your API credentials won't be saved.")
+        }
+        .sheet(isPresented: $showingDebugInfo) {
+            DebugInfoView(buildMonitor: buildMonitor)
         }
         .onAppear {
             loadSettings()
