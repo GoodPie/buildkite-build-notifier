@@ -15,18 +15,6 @@ enum APIError: Error {
     case invalidResponse
     case decodingError(Error)
     case rateLimited
-
-    var errorCode: String {
-        switch self {
-        case .unauthorized: return "BK-401"
-        case .organizationNotFound: return "BK-404"
-        case .buildNotFound: return "BK-404B"
-        case .networkError: return "BK-NET"
-        case .invalidResponse: return "BK-RSP"
-        case .decodingError: return "BK-DEC"
-        case .rateLimited: return "BK-429"
-        }
-    }
 }
 
 /// Buildkite REST API v2 client

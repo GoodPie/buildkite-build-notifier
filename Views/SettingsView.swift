@@ -263,7 +263,7 @@ struct SettingsView: View {
             Text("Your API credentials won't be saved.")
         }
         .sheet(isPresented: $showingDebugInfo) {
-            DebugInfoView(buildMonitor: buildMonitor, diagnosticLog: buildMonitor.diagnosticLog)
+            DebugInfoView(buildMonitor: buildMonitor)
         }
         .onAppear {
             loadSettings()

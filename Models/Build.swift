@@ -28,9 +28,9 @@ struct Build: Codable, Identifiable, Equatable {
     // Computed properties
     var isActive: Bool {
         switch state {
-        case .scheduled, .running, .blocked, .canceling, .waiting, .unknown:
+        case .scheduled, .running, .blocked, .canceling, .waiting:
             return true
-        case .passed, .failed, .canceled, .skipped, .notRun, .waitingFailed:
+        case .passed, .failed, .canceled, .skipped, .notRun, .waitingFailed, .unknown:
             return false
         }
     }

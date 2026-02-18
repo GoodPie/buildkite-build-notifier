@@ -10,6 +10,11 @@ struct DebugInfoView: View {
     @ObservedObject var diagnosticLog: DiagnosticLog
     @Environment(\.dismiss) var dismiss
 
+    init(buildMonitor: BuildMonitor) {
+        self.buildMonitor = buildMonitor
+        self.diagnosticLog = buildMonitor.diagnosticLog
+    }
+
     @State private var copied = false
     @State private var reportText = ""
 

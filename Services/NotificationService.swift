@@ -11,7 +11,7 @@ import os
 
 /// Notification service for macOS system notifications
 /// Handles notification permissions and build state change notifications
-/// Notification logic: Notify on build completion only (passed, failed, canceled)
+/// Notification logic: Notify on build completion only (all completed states such as passed, failed, canceled, skipped, notRun, waitingFailed)
 class NotificationService {
     private let center = UNUserNotificationCenter.current()
     private let diagnosticLog: DiagnosticLog?
