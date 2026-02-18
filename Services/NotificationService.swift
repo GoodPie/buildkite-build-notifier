@@ -23,10 +23,11 @@ class NotificationService {
 
     /// Request notification permissions from the user on initialization
     private func requestAuthorization() {
+        let log = self.diagnosticLog
         center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error = error {
                 Logger.notifications.error("Notification authorization error: \(error.localizedDescription)")
-                if let log = self.diagnosticLog {
+                if let log {
                     Task { @MainActor in
                         log.log(code: .notificationDenied, message: "Notification authorization failed", detail: error.localizedDescription, level: .error)
                     }
@@ -51,10 +52,11 @@ class NotificationService {
             trigger: nil // Immediate delivery
         )
 
+        let log = self.diagnosticLog
         center.add(request) { error in
             if let error = error {
                 Logger.notifications.error("Failed to deliver notification: \(error.localizedDescription)")
-                if let log = self.diagnosticLog {
+                if let log {
                     Task { @MainActor in
                         log.log(code: .notificationFailed, message: "Failed to deliver notification", detail: error.localizedDescription, level: .error)
                     }
@@ -77,7 +79,7 @@ class NotificationService {
             return "\(build.branch) did not run"
         case .waitingFailed:
             return "\(build.branch) waiting failed"
-        default:
+        case .scheduled, .running, .blocked, .canceling, .waiting, .unknown:
             return "\(build.branch) - \(build.state.displayName)"
         }
     }

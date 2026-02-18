@@ -102,12 +102,12 @@ class DiagnosticLog: ObservableObject {
 
     private let maxEntries = 50
 
-    private static var logFileURL: URL {
+    private static let logFileURL: URL = {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let appDir = appSupport.appendingPathComponent("com.goodpie.BuildkiteNotifier")
         try? FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
         return appDir.appendingPathComponent("diagnostic_log.json")
-    }
+    }()
 
     init() {
         loadFromDisk()
@@ -121,9 +121,7 @@ class DiagnosticLog: ObservableObject {
         Array(entries.filter { $0.level == .error }.suffix(10).reversed())
     }
 
-    var errorCount: Int {
-        entries.filter { $0.level == .error }.count
-    }
+    @Published private(set) var errorCount: Int = 0
 
     func log(code: DiagnosticCode, message: String, detail: String? = nil, level: DiagnosticLevel = .error) {
         let entry = DiagnosticEntry(
@@ -133,10 +131,14 @@ class DiagnosticLog: ObservableObject {
             level: level
         )
         entries.append(entry)
+        if level == .error {
+            errorCount += 1
+        }
 
         // Ring buffer: trim from front if over limit
         if entries.count > maxEntries {
             entries.removeFirst(entries.count - maxEntries)
+            errorCount = entries.filter { $0.level == .error }.count
         }
 
         saveToDisk()
@@ -144,6 +146,7 @@ class DiagnosticLog: ObservableObject {
 
     func clear() {
         entries.removeAll()
+        errorCount = 0
         saveToDisk()
     }
 
@@ -153,6 +156,7 @@ class DiagnosticLog: ObservableObject {
         do {
             let data = try Data(contentsOf: Self.logFileURL)
             entries = try JSONDecoder().decode([DiagnosticEntry].self, from: data)
+            errorCount = entries.filter { $0.level == .error }.count
         } catch {
             // Silently ignore — fresh start or corrupted file
         }

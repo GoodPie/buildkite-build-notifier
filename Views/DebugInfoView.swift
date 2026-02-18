@@ -104,8 +104,8 @@ struct DebugInfoView: View {
         }
         .frame(width: 500, height: 480)
         .onAppear { regenerateReport() }
-        .onChange(of: diagnosticLog.recentEntries.count) { regenerateReport() }
-        .onChange(of: buildMonitor.lastUpdateTime) { regenerateReport() }
+        .onChange(of: diagnosticLog.recentEntries.count) { _, _ in regenerateReport() }
+        .onChange(of: buildMonitor.lastUpdateTime) { _, _ in regenerateReport() }
     }
 
     private func regenerateReport() {
