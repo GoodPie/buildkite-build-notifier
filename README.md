@@ -59,7 +59,9 @@ Now when a pipeline is running that you have been assigned to, you'll get a noti
 
 1. Navigate to Buildkite: https://buildkite.com/user/api-access-tokens
 2. Click "New API Access Token"
-3. Select all `READ` permissions checked (will refine this down later)
+3. Add `Read Permissions` for.:
+  - Read Builds (`read_builds`)
+  - Read User (`read_user`)  
 4. Select the organisation access you wish to grant
 5. Click "Create New API Access Token"
 
