@@ -11,7 +11,6 @@ struct MenuView: View {
     @ObservedObject var buildMonitor: BuildMonitor
     @State private var buildURL: String = ""
     @State private var showingSettings: Bool = false
-    @State private var showingDebugInfo: Bool = false
     @State private var expandedBuildId: String? = nil
 
     private var activeBuilds: [Build] {
@@ -184,27 +183,6 @@ struct MenuView: View {
 
                 Spacer()
 
-                Button(action: { showingDebugInfo = true }) {
-                    ZStack(alignment: .topTrailing) {
-                        Image(systemName: "ladybug")
-                            .font(.body)
-
-                        if buildMonitor.diagnosticLog.errorCount > 0 {
-                            Text("\(buildMonitor.diagnosticLog.errorCount)")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(2)
-                                .background(Color.red)
-                                .clipShape(Circle())
-                                .offset(x: 6, y: -6)
-                        }
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Spacer()
-
                 Button("Quit") { NSApplication.shared.terminate(nil) }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -216,9 +194,6 @@ struct MenuView: View {
         .sheet(isPresented: $showingSettings) {
             SettingsView(buildMonitor: buildMonitor)
                 .interactiveDismissDisabled(false)
-        }
-        .sheet(isPresented: $showingDebugInfo) {
-            DebugInfoView(buildMonitor: buildMonitor, diagnosticLog: buildMonitor.diagnosticLog)
         }
     }
 
