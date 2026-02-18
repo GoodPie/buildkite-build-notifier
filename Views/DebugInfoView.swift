@@ -11,10 +11,7 @@ struct DebugInfoView: View {
     @Environment(\.dismiss) var dismiss
 
     @State private var copied = false
-
-    private var reportText: String {
-        DiagnosticReport.generate(buildMonitor: buildMonitor, diagnosticLog: diagnosticLog)
-    }
+    @State private var reportText = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -101,6 +98,13 @@ struct DebugInfoView: View {
             .padding(16)
         }
         .frame(width: 500, height: 480)
+        .onAppear { regenerateReport() }
+        .onChange(of: diagnosticLog.recentEntries.count) { regenerateReport() }
+        .onChange(of: buildMonitor.lastUpdateTime) { regenerateReport() }
+    }
+
+    private func regenerateReport() {
+        reportText = DiagnosticReport.generate(buildMonitor: buildMonitor, diagnosticLog: diagnosticLog)
     }
 
     private func formatTime(_ date: Date) -> String {
