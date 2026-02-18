@@ -8,6 +8,8 @@ import Foundation
 @MainActor
 struct DiagnosticReport {
 
+    private static let launchDate = Date()
+
     static func generate(buildMonitor: BuildMonitor, diagnosticLog: DiagnosticLog) -> String {
         var lines: [String] = []
 
@@ -36,7 +38,7 @@ struct DiagnosticReport {
         #endif
 
         // Process uptime
-        let uptime = ProcessInfo.processInfo.systemUptime
+        let uptime = Date().timeIntervalSince(launchDate)
         let uptimeMinutes = Int(uptime) / 60
         let uptimeHours = uptimeMinutes / 60
         let remainingMinutes = uptimeMinutes % 60
