@@ -58,8 +58,14 @@ class NotificationService {
             return "\(build.branch) failed"
         case .canceled:
             return "\(build.branch) canceled"
+        case .skipped:
+            return "\(build.branch) was skipped"
+        case .notRun:
+            return "\(build.branch) did not run"
+        case .waitingFailed:
+            return "\(build.branch) waiting failed"
         default:
-            return "\(build.branch) - \(build.state.rawValue)"
+            return "\(build.branch) - \(build.state.displayName)"
         }
     }
 }

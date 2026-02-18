@@ -27,11 +27,21 @@ struct Build: Codable, Identifiable, Equatable {
 
     // Computed properties
     var isActive: Bool {
-        state == .scheduled || state == .running || state == .blocked
+        switch state {
+        case .scheduled, .running, .blocked, .canceling, .waiting, .unknown:
+            return true
+        case .passed, .failed, .canceled, .skipped, .notRun, .waitingFailed:
+            return false
+        }
     }
 
     var isCompleted: Bool {
-        state == .passed || state == .failed || state == .canceled
+        switch state {
+        case .passed, .failed, .canceled, .skipped, .notRun, .waitingFailed:
+            return true
+        case .scheduled, .running, .blocked, .canceling, .waiting, .unknown:
+            return false
+        }
     }
 
     var displayTitle: String {

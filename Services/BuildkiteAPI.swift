@@ -159,6 +159,8 @@ class BuildkiteAPI {
             return buildResponse.toBuild(orgSlug: org)
         } catch let error as APIError {
             throw error
+        } catch let error as DecodingError {
+            throw APIError.decodingError(error)
         } catch {
             throw APIError.networkError(error)
         }

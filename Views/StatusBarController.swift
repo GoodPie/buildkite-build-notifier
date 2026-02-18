@@ -108,6 +108,18 @@ class StatusBarController: NSObject, ObservableObject {
             return ("🟠", "Blocked")
         case .canceled:
             return ("⚫️", "Canceled")
+        case .canceling:
+            return ("⚫️", "Canceling")
+        case .skipped:
+            return ("⚪️", "Skipped")
+        case .notRun:
+            return ("⚪️", "Not Run")
+        case .waiting:
+            return ("⚪️", "Waiting")
+        case .waitingFailed:
+            return ("🔴", "Waiting Failed")
+        case .unknown:
+            return ("⚪️", state.displayName)
         }
     }
 
