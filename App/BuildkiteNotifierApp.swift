@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import os
 
 @main
 struct BuildkiteNotifierApp: App {
@@ -14,6 +15,7 @@ struct BuildkiteNotifierApp: App {
     @StateObject private var statusBarController: StatusBarController
 
     init() {
+        Logger.app.info("BuildkiteNotifier starting up")
         let monitor = BuildMonitor()
         _buildMonitor = StateObject(wrappedValue: monitor)
         _statusBarController = StateObject(wrappedValue: StatusBarController(buildMonitor: monitor))

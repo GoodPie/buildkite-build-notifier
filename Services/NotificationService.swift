@@ -7,14 +7,17 @@
 
 import Foundation
 import UserNotifications
+import os
 
 /// Notification service for macOS system notifications
 /// Handles notification permissions and build state change notifications
 /// Notification logic: Notify on build completion only (passed, failed, canceled)
 class NotificationService {
     private let center = UNUserNotificationCenter.current()
+    private let diagnosticLog: DiagnosticLog?
 
-    init() {
+    init(diagnosticLog: DiagnosticLog? = nil) {
+        self.diagnosticLog = diagnosticLog
         requestAuthorization()
     }
 
@@ -22,7 +25,12 @@ class NotificationService {
     private func requestAuthorization() {
         center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error = error {
-                print("Notification authorization error: \(error)")
+                Logger.notifications.error("Notification authorization error: \(error.localizedDescription)")
+                if let log = self.diagnosticLog {
+                    Task { @MainActor in
+                        log.log(code: .notificationDenied, message: "Notification authorization failed", detail: error.localizedDescription)
+                    }
+                }
             }
         }
     }
@@ -45,7 +53,12 @@ class NotificationService {
 
         center.add(request) { error in
             if let error = error {
-                print("Notification error: \(error)")
+                Logger.notifications.error("Failed to deliver notification: \(error.localizedDescription)")
+                if let log = self.diagnosticLog {
+                    Task { @MainActor in
+                        log.log(code: .notificationFailed, message: "Failed to deliver notification", detail: error.localizedDescription)
+                    }
+                }
             }
         }
     }
