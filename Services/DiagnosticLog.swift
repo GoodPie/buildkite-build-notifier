@@ -61,9 +61,16 @@ enum DiagnosticLevel: String, Codable, Comparable {
     case warning
     case error
 
+    private var sortOrder: Int {
+        switch self {
+        case .info: return 0
+        case .warning: return 1
+        case .error: return 2
+        }
+    }
+
     static func < (lhs: Self, rhs: Self) -> Bool {
-        let order: [DiagnosticLevel] = [.info, .warning, .error]
-        return order.firstIndex(of: lhs)! < order.firstIndex(of: rhs)!
+        lhs.sortOrder < rhs.sortOrder
     }
 }
 
